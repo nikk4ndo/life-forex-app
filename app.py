@@ -8,7 +8,7 @@ import os
 # --- 1. ძირითადი პარამეტრები ---
 st.set_page_config(page_title="Life Forex AI", layout="wide")
 
-# Gemini-ს გამართვა
+# Gemini-ს გამართვა (შესწორებული ვერსია)
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"], transport='rest')
     model = genai.GenerativeModel('models/gemini-1.5-flash')
@@ -30,21 +30,15 @@ def load_data():
     return pd.DataFrame(columns=["Date", "Event", "Score", "Price"])
 
 def analyze_with_gemini(txt):
-    # უფრო მკაფიო ინსტრუქცია AI-სთვის
-    prompt = f"""
-    შენ ხარ ემოციური ანალიტიკოსი. შეაფასე მოვლენა -10.0-დან +10.0-მდე შკალაზე. 
-    -10 არის კატასტროფა, 0 ნეიტრალურია, +10 არის უდიდესი ბედნიერება.
-    პასუხად დააბრუნე მხოლოდ ციფრი (მაგალითად: 4.5 ან -2.1).
-    მოვლენა: {txt}
-    """
+    prompt = f"შეაფასე მოვლენის ემოციური გავლენა -10-დან +10-მდე. პასუხად დააბრუნე მხოლოდ ციფრი. მოვლენა: {txt}"
     try:
         response = model.generate_content(prompt)
-        text_resp = response.text.strip()
-        # ვპოულობთ მხოლოდ ციფრებს და წერტილს
-        clean_score = "".join(c for c in text_resp if c.isdigit() or c in ".-")
+        score_text = response.text.strip()
+        # ვწმენდთ პასუხს ზედმეტი სიმბოლოებისგან
+        clean_score = ''.join(c for c in score_text if c.isdigit() or c in '.-')
         return float(clean_score)
     except:
-        return 0.0
+        return 0
 
 # --- 3. ინტერფეისი ---
 
@@ -57,49 +51,31 @@ with st.form("my_form", clear_on_submit=True):
     submit = st.form_submit_button("ანალიზი და შენახვა")
     
     if submit and user_input:
-        with st.spinner("AI აანალიზებს ემოციას..."):
+        with st.spinner("AI ფიქრობს..."):
             score = analyze_with_gemini(user_input)
             
-            # საწყისი ფასი არის 100
-            if df.empty:
-                new_price = 100.0 + score
-            else:
-                new_price = float(df['Price'].iloc[-1]) + score
+            # ფასის გამოთვლა
+            last_price = df['Price'].iloc[-1] if not df.empty else 100
+            new_price = last_price + score
             
+            # ახალი მონაცემი
             new_data = pd.DataFrame([{
-                "Date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "Date": datetime.now(),
                 "Event": user_input,
                 "Score": score,
-                "Price": round(new_price, 2)
+                "Price": new_price
             }])
             
             df = pd.concat([df, new_data], ignore_index=True)
             df.to_csv(DATA_FILE, index=False)
-            st.success(f"ანალიზი დასრულდა. გავლენა: {score}")
+            st.success(f"მზადაა! ქულა: {score}")
 
 # ჩარტის ჩვენება
 if not df.empty:
-    # ფერი იცვლება ბოლო ქულის მიხედვით
-    line_color = "green" if df['Score'].iloc[-1] >= 0 else "red"
-    
     fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=df['Date'], 
-        y=df['Price'], 
-        mode='lines+markers',
-        line=dict(color=line_color, width=3),
-        fill='tozeroy',
-        name="ბალანსი"
-    ))
-    
-    fig.update_layout(
-        template="plotly_dark", 
-        title="ცხოვრების ემოციური ტრაექტორია",
-        yaxis=dict(autorange=True) # ჩარტი ავტომატურად მოერგება ციფრებს
-    )
+    fig.add_trace(go.Scatter(x=df['Date'], y=df['Price'], mode='lines+markers', fill='tozeroy'))
+    fig.update_layout(template="plotly_dark", title="ემოციური დინამიკა")
     st.plotly_chart(fig, use_container_width=True)
     
-    st.write("### 📝 ისტორია")
+    st.write("### ისტორია")
     st.dataframe(df.sort_values(by="Date", ascending=False), use_container_width=True)
-else:
-    st.info("ჩაწერე პირველი მოვლენა ანალიზის დასაწყებად.")
