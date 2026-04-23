@@ -5,98 +5,77 @@ import google.generativeai as genai
 from datetime import datetime
 import os
 
-# --- ინიციალიზაცია ---
+# --- 1. ძირითადი პარამეტრები ---
 st.set_page_config(page_title="Life Forex AI", layout="wide")
 
-# Gemini-ს კონფიგურაცია Secrets-დან
+# Gemini-ს გამართვა (შესწორებული ვერსია)
 try:
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"], transport='rest')
     model = genai.GenerativeModel('models/gemini-1.5-flash')
 except Exception as e:
-    st.error("Gemini API გასაღები ვერ მოიძებნა. შეამოწმე Secrets!")
+    st.error("Secrets-ში გასაღები ვერ მოიძებნა ან არასწორია.")
 
 DATA_FILE = "life_data.csv"
 
-# მონაცემების ჩატვირთვის ფუნქცია
+# --- 2. ფუნქციები ---
+
 def load_data():
     if os.path.exists(DATA_FILE):
-        df = pd.read_csv(DATA_FILE)
-        df['Date'] = pd.to_datetime(df['Date'])
-        return df
+        try:
+            df = pd.read_csv(DATA_FILE)
+            df['Date'] = pd.to_datetime(df['Date'])
+            return df
+        except:
+            return pd.DataFrame(columns=["Date", "Event", "Score", "Price"])
     return pd.DataFrame(columns=["Date", "Event", "Score", "Price"])
 
-# AI ანალიზის ფუნქცია (Gemini)
 def analyze_with_gemini(txt):
-    prompt = f"""
-    შენ ხარ ემოციური ანალიტიკოსი. გააანალიზე შემდეგი მოვლენა და შეაფასე მისი ემოციური გავლენა 
-    ავტორის ცხოვრებაზე -10-დან (ძალიან ნეგატიური) +10-მდე (ძალიან პოზიტიური).
-    პასუხად დააბრუნე მხოლოდ და მხოლოდ ერთი ციფრი (მაგალითად: 5 ან -3.5).
-    მოვლენა: {txt}
-    """
+    prompt = f"შეაფასე მოვლენის ემოციური გავლენა -10-დან +10-მდე. პასუხად დააბრუნე მხოლოდ ციფრი. მოვლენა: {txt}"
     try:
         response = model.generate_content(prompt)
-        # ამოვიღოთ ტექსტური პასუხი და ვაქციოთ ციფრად
         score_text = response.text.strip()
-        return float(''.join(c for c in score_text if c.isdigit() or c in '.-'))
-    except Exception as e:
-        st.warning(f"AI ანალიზი ვერ მოხერხდა: {e}")
+        # ვწმენდთ პასუხს ზედმეტი სიმბოლოებისგან
+        clean_score = ''.join(c for c in score_text if c.isdigit() or c in '.-')
+        return float(clean_score)
+    except:
         return 0
 
-# --- ინტერფეისი ---
+# --- 3. ინტერფეისი ---
+
 st.title("📈 ჩემი ცხოვრების ფორექსი")
-st.subheader("მართე შენი ცხოვრების ემოციური ტრაექტორია")
 
 df = load_data()
 
-# ახალი მოვლენის დამატება
-with st.form("event_form", clear_on_submit=True):
-    txt = st.text_area("რა მოხდა დღეს?")
-    submitted = st.form_submit_button("ანალიზი და შენახვა")
+with st.form("my_form", clear_on_submit=True):
+    user_input = st.text_area("რა მოხდა დღეს?")
+    submit = st.form_submit_button("ანალიზი და შენახვა")
     
-    if submitted and txt:
-        with st.spinner("AI აანალიზებს მოვლენას..."):
-            score = analyze_with_gemini(txt)
+    if submit and user_input:
+        with st.spinner("AI ფიქრობს..."):
+            score = analyze_with_gemini(user_input)
             
-            # ფასის სიმულაცია (წინა ფასს ვუმატებთ ახალ ქულას)
+            # ფასის გამოთვლა
             last_price = df['Price'].iloc[-1] if not df.empty else 100
             new_price = last_price + score
             
-            # ახალი მონაცემის დამატება
-            new_row = {
+            # ახალი მონაცემი
+            new_data = pd.DataFrame([{
                 "Date": datetime.now(),
-                "Event": txt,
+                "Event": user_input,
                 "Score": score,
                 "Price": new_price
-            }
+            }])
             
-            df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+            df = pd.concat([df, new_data], ignore_index=True)
             df.to_csv(DATA_FILE, index=False)
-            st.success(f"მოვლენა შენახულია! ქულა: {score}")
+            st.success(f"მზადაა! ქულა: {score}")
 
-# ჩარტის აგება
+# ჩარტის ჩვენება
 if not df.empty:
     fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=df['Date'], 
-        y=df['Price'],
-        mode='lines+markers',
-        line=dict(color='#00ff00' if df['Score'].iloc[-1] >= 0 else '#ff0000', width=3),
-        fill='tozeroy',
-        name="ბედნიერების ინდექსი"
-    ))
-    
-    fig.update_layout(
-        title="ემოციური ბალანსის დინამიკა",
-        xaxis_title="დრო",
-        yaxis_title="ინდექსი",
-        template="plotly_dark",
-        height=500
-    )
-    
+    fig.add_trace(go.Scatter(x=df['Date'], y=df['Price'], mode='lines+markers', fill='tozeroy'))
+    fig.update_layout(template="plotly_dark", title="ემოციური დინამიკა")
     st.plotly_chart(fig, use_container_width=True)
-
-    # ისტორიის ჩვენება
-    st.write("### 📝 ბოლო მოვლენები")
-    st.dataframe(df.sort_values(by="Date", ascending=False)[["Date", "Event", "Score"]], use_container_width=True)
-else:
-    st.info("ჯერჯერობით მონაცემები არ არის. ჩაწერე შენი პირველი მოვლენა!")
+    
+    st.write("### ისტორია")
+    st.dataframe(df.sort_values(by="Date", ascending=False), use_container_width=True)
