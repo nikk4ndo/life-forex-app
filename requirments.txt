@@ -1,4 +1,4 @@
-otreamline
+streamlit
 openai
 pandas
 plotly
