@@ -7,7 +7,7 @@ import os
 
 # --- ინიციალიზაცია ---
 st.set_page_config(page_title="Life Forex AI", layout="wide")
-client = OpenAI(api_key="") # <--- შენი გასაღები აქ!
+client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"]) # <--- შენი გასაღები აქ!
 DATA_FILE = "life_data.csv"
 
 def load_data():
