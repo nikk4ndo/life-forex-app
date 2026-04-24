@@ -9,14 +9,14 @@ import re
 # --- 1. კონფიგურაცია ---
 st.set_page_config(page_title="Life Forex AI", layout="wide")
 
-# Gemini-ს გამართვა - transport='rest' აუცილებელია 404 შეცდომის ასაცილებლად
+# Gemini-ს გამართვა
 if "GEMINI_API_KEY" not in st.secrets:
     st.error("🔑 Secrets-ში GEMINI_API_KEY არ არის!")
     st.stop()
 
 try:
+    # transport='rest' აუცილებელია 404 შეცდომის ასაცილებლად
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"], transport='rest')
-    # ვიყენებთ უფრო სტაბილურ მოდელს
     model = genai.GenerativeModel('gemini-1.5-flash')
 except Exception as e:
     st.error(f"კავშირის შეცდომა: {e}")
@@ -38,18 +38,13 @@ def analyze_with_gemini(txt):
     prompt = f"შეაფასე მოვლენის ემოციური გავლენა -10-დან +10-მდე. პასუხად დაწერე მხოლოდ ერთი ციფრი. მოვლენა: {txt}"
     try:
         response = model.generate_content(prompt)
-        # ვამოწმებთ, საერთოდ მოვიდა თუ არა პასუხი
-        if not response.text:
-            st.warning("AI-მ ცარიელი პასუხი დააბრუნა.")
-            return 0.0
-        
-        # ციფრის ამოღება
+        # ციფრის ამოღება ტექსტიდან
         match = re.search(r"[-+]?\d*\.\d+|\d+", response.text)
         if match:
             return float(match.group())
         return 0.0
     except Exception as e:
-        st.error(f"🤖 AI ვერ გიპასუხებთ: {e}")
+        st.error(f"🤖 AI შეცდომა: {e}")
         return 0.0
 
 # --- 3. ინტერფეისი ---
@@ -81,11 +76,15 @@ with st.form("main_form", clear_on_submit=True):
 
 # --- 4. ვიზუალიზაცია ---
 if not df.empty:
+    # ვიღებთ ბოლო ჩაწერილ ქულას ფერისთვის
+    last_val = df['Score'].iloc[-1]
+    chart_color = '#00FF00' if last_val >= 0 else '#FF0000'
+    
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=df['Date'], y=df['Price'], 
         mode='lines+markers',
-        line=dict(color='#00FF00' if df['Score'].iloc[-1] >= 0 else '#FF0000'),
+        line=dict(color=chart_color, width=3),
         fill='tozeroy'
     ))
     fig.update_layout(template="plotly_dark", title="ემოციური დინამიკა")
